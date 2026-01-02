@@ -18,6 +18,9 @@ const config = {
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
   whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN,
   supportPhoneNumber: process.env.SUPPORT_PHONE_NUMBER,
+
+  // Google Gemini AI
+  geminiApiKey: process.env.GEMINI_API_KEY,
 };
 
 module.exports = config;
