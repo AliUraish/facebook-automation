@@ -1,17 +1,23 @@
 const supabaseService = require('../services/supabaseService');
 const whatsappService = require('../services/whatsappService');
 const facebookService = require('../services/facebookService');
+const geminiService = require('../services/geminiService');
+
+// Store conversation history per customer (in-memory for now)
+// In production, store this in Supabase
+const conversationHistory = {};
 
 /**
- * Handle new customer onboarding
+ * Handle new customer onboarding with AI
  * - Creates customer record in Supabase
- * - Sends welcome message via Messenger
+ * - Uses AI for natural conversation
+ * - Collects customer info intelligently
  * - Notifies support via WhatsApp
  */
 const handleNewCustomer = async (data) => {
     const { psid, pageId, messageText, messageId, timestamp } = data;
 
-    console.log('🚀 Starting new customer onboarding...');
+    console.log('🚀 Starting AI-powered customer onboarding...');
 
     try {
         // 1. Create customer record in Supabase
@@ -21,13 +27,34 @@ const handleNewCustomer = async (data) => {
             firstMessage: messageText,
         });
 
-        // 2. Send welcome message to customer via Messenger
-        const welcomeMessage = `Hello! 👋 Welcome to our support. We've received your message and our team will get back to you shortly.\n\nTo help us serve you better, could you please share your name?`;
+        // 2. Initialize conversation history
+        conversationHistory[psid] = [
+            { role: 'user', content: messageText }
+        ];
+
+        // 3. Extract any info from first message
+        const extractedInfo = await geminiService.extractCustomerInfo(messageText);
+        if (extractedInfo && Object.keys(extractedInfo).length > 0) {
+            await supabaseService.updateCustomer(psid, extractedInfo);
+            console.log('📝 Extracted info from first message:', extractedInfo);
+        }
+
+        // 4. Generate AI response
+        const aiResponse = await geminiService.generateOnboardingResponse(
+            conversationHistory[psid],
+            extractedInfo
+        );
+
+        const welcomeMessage = aiResponse ||
+            `Hello! 👋 Welcome to Desert Sound!\n\nWe specialize in home theaters, automation systems, and premium speakers. We've received your message and our team will get back to you shortly.\n\nTo help us serve you better, could you please share your name?`;
+
+        // Store AI response in history
+        conversationHistory[psid].push({ role: 'assistant', content: welcomeMessage });
 
         await facebookService.sendMessage(psid, welcomeMessage);
-        console.log('📤 Welcome message sent to customer');
+        console.log('📤 AI-generated welcome message sent');
 
-        // 3. Notify support via WhatsApp
+        // 5. Notify support via WhatsApp
         const supportAlert = whatsappService.formatNewCustomerAlert({
             psid,
             messageText,
@@ -39,10 +66,10 @@ const handleNewCustomer = async (data) => {
         return {
             success: true,
             customer,
-            message: 'New customer onboarded successfully',
+            message: 'New customer onboarded with AI',
         };
     } catch (error) {
-        console.error('❌ Error in onboarding:', error);
+        console.error('❌ Error in AI onboarding:', error);
         return {
             success: false,
             error: error.message,
@@ -51,36 +78,57 @@ const handleNewCustomer = async (data) => {
 };
 
 /**
- * Handle customer response during onboarding
- * Updates customer info based on their responses
+ * Handle customer response during onboarding with AI
+ * Uses AI to understand context and respond naturally
  */
-const handleOnboardingResponse = async (psid, responseText, responseType) => {
+const handleOnboardingResponse = async (psid, responseText) => {
     try {
-        let updates = {};
-        let nextPrompt = null;
+        console.log('🤖 Processing onboarding response with AI...');
 
-        switch (responseType) {
-            case 'name':
-                updates.name = responseText;
-                nextPrompt = `Thanks, ${responseText}! Could you also share your phone number so we can reach you faster?`;
-                break;
-            case 'phone':
-                updates.phone = responseText;
-                nextPrompt = `Perfect! We have your contact info now. Our team will reach out to you soon. Is there anything else you'd like to add?`;
-                break;
-            default:
-                // General response - just acknowledge
-                nextPrompt = `Thanks for your message! Our team will review and get back to you shortly.`;
+        // Get conversation history
+        if (!conversationHistory[psid]) {
+            conversationHistory[psid] = [];
         }
 
-        // Update customer record
-        if (Object.keys(updates).length > 0) {
-            await supabaseService.updateCustomer(psid, updates);
+        // Add user message to history
+        conversationHistory[psid].push({ role: 'user', content: responseText });
+
+        // Extract customer info from response
+        const extractedInfo = await geminiService.extractCustomerInfo(responseText);
+
+        if (extractedInfo && Object.keys(extractedInfo).length > 0) {
+            await supabaseService.updateCustomer(psid, extractedInfo);
+            console.log('📝 Updated customer info:', extractedInfo);
         }
 
-        // Send follow-up message
-        if (nextPrompt) {
-            await facebookService.sendMessage(psid, nextPrompt);
+        // Get current customer data
+        const customer = await supabaseService.getCustomerByPSID(psid);
+
+        // Generate AI response based on conversation
+        const aiResponse = await geminiService.generateOnboardingResponse(
+            conversationHistory[psid],
+            customer
+        );
+
+        if (aiResponse) {
+            // Store AI response in history
+            conversationHistory[psid].push({ role: 'assistant', content: aiResponse });
+
+            // Send response to customer
+            await facebookService.sendMessage(psid, aiResponse);
+            console.log('📤 AI response sent');
+
+            // Check if we have all required info
+            if (customer && customer.name && customer.phone) {
+                console.log('✅ All customer info collected, notifying support');
+
+                const completeAlert = `✅ COMPLETE CUSTOMER INFO\n\nName: ${customer.name}\nPhone: ${customer.phone}\nInquiry: ${customer.inquiry || customer.first_message}\n\nPSID: ${psid}`;
+
+                await whatsappService.sendToSupport(completeAlert);
+
+                // Clear conversation history to save memory
+                delete conversationHistory[psid];
+            }
         }
 
         return { success: true };
@@ -90,7 +138,15 @@ const handleOnboardingResponse = async (psid, responseText, responseType) => {
     }
 };
 
+/**
+ * Get conversation history for a customer
+ */
+const getConversationHistory = (psid) => {
+    return conversationHistory[psid] || [];
+};
+
 module.exports = {
     handleNewCustomer,
     handleOnboardingResponse,
+    getConversationHistory,
 };
