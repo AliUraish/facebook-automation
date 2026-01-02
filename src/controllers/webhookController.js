@@ -100,16 +100,25 @@ const processMessagingEvent = async (event, pageId, timestamp) => {
                 timestamp,
             });
         } else {
-            // Existing customer - check for spam
-            console.log('👤 Existing customer found, checking message...');
-            await spamDetectionAgent.processMessage({
-                customer,
-                psid: senderId,
-                pageId,
-                messageText,
-                messageId,
-                timestamp,
-            });
+            // Existing customer - check if onboarding is complete
+            const isOnboardingComplete = customer.name && customer.phone;
+
+            if (!isOnboardingComplete) {
+                // Continue onboarding conversation
+                console.log('👤 Continuing onboarding conversation...');
+                await onboardingAgent.handleOnboardingResponse(senderId, messageText);
+            } else {
+                // Onboarding complete - check for spam
+                console.log('👤 Existing customer found, checking message...');
+                await spamDetectionAgent.processMessage({
+                    customer,
+                    psid: senderId,
+                    pageId,
+                    messageText,
+                    messageId,
+                    timestamp,
+                });
+            }
         }
     } catch (error) {
         console.error('❌ Error processing message:', error);
