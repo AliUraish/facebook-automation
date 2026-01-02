@@ -7,9 +7,10 @@ Facebook Webhook integration for message processing with Supabase database and W
 - ✅ **Webhook Verification** - Handles Facebook's GET verification challenge
 - 📩 **Message Processing** - Receives and processes incoming Facebook messages
 - 👤 **Customer Management** - Stores customer data in Supabase
-- 🆕 **New Customer Onboarding** - Welcomes new customers and collects info
-- 🔍 **Spam Detection** - Filters spam messages from genuine inquiries
+- 🤖 **Gemini AI Onboarding** - Natural conversation to collect customer info (FREE!)
+- 🔍 **Smart Spam Detection** - Gemini AI classifies spam vs genuine inquiries
 - 📱 **WhatsApp Forwarding** - Sends genuine messages to support team
+
 
 ## Quick Start
 
@@ -35,6 +36,7 @@ Required variables:
 - `WHATSAPP_PHONE_NUMBER_ID` - WhatsApp Business phone number ID
 - `WHATSAPP_ACCESS_TOKEN` - WhatsApp access token
 - `SUPPORT_PHONE_NUMBER` - Support team's phone number
+- `GEMINI_API_KEY` - Google Gemini API key (FREE - get from [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
 
 ### 3. Set Up Supabase Tables
 
@@ -121,10 +123,11 @@ src/
 ├── services/
 │   ├── supabaseService.js  # Database operations
 │   ├── facebookService.js  # Messenger API
-│   └── whatsappService.js  # WhatsApp API
+│   ├── whatsappService.js  # WhatsApp API
+│   └── geminiService.js    # Gemini AI features (FREE!)
 └── agents/
-    ├── onboardingAgent.js   # New customer flow
-    └── spamDetectionAgent.js # Spam classification
+    ├── onboardingAgent.js   # AI conversational onboarding
+    └── spamDetectionAgent.js # AI spam classification
 ```
 
 ## Deployment
