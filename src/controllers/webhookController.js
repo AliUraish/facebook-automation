@@ -13,9 +13,11 @@ const verifyWebhook = (req, res) => {
     const challenge = req.query['hub.challenge'];
 
     console.log('📥 Webhook verification request received');
-    console.log(`   Mode: ${mode}`);
-    console.log(`   Token: ${token}`);
-    console.log(`   Challenge: ${challenge}`);
+    console.log(`   Config Status:
+       - Verify Token Set: ${!!config.verifyToken}
+       - Supabase Set: ${!!config.supabaseUrl}
+       - Gemini Set: ${!!config.geminiApiKey}
+       - Facebook Set: ${!!config.fbPageAccessToken}`);
 
     // Check if mode and token are correct
     if (mode === 'subscribe' && token === config.verifyToken) {
@@ -40,10 +42,9 @@ const handleMessage = async (req, res) => {
         return res.sendStatus(404);
     }
 
-    // Return 200 immediately to avoid timeout
-    res.status(200).send('EVENT_RECEIVED');
+    console.log('✅ Webhook event received, starting processing...');
 
-    // Process messages asynchronously
+    // Process messages
     try {
         // Iterate over each entry (there may be multiple)
         for (const entry of body.entry) {
@@ -57,8 +58,14 @@ const handleMessage = async (req, res) => {
                 }
             }
         }
+
+        // Return 200 after all processing is complete (better for Vercel/Serverless)
+        console.log('🏁 Webhook processing complete');
+        res.status(200).send('EVENT_RECEIVED');
     } catch (error) {
         console.error('❌ Error processing webhook:', error);
+        // Still return 200 to acknowledge the event so Facebook doesn't retry infinitely
+        res.status(200).send('ERROR_BUT_RECEIVED');
     }
 };
 
