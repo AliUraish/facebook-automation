@@ -7,7 +7,7 @@ let model = null;
 const getModel = () => {
     if (!model && config.geminiApiKey) {
         genAI = new GoogleGenerativeAI(config.geminiApiKey);
-        model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Fast & free
+        model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }); // Lightning-fast & capable
     }
     return model;
 };
