@@ -70,9 +70,23 @@ const processMessagingEvent = async (event, pageId, timestamp) => {
     const recipientId = event.recipient?.id;
     const message = event.message;
 
-    // Skip if no message or no text
+    // Identify event type
+    if (event.delivery) {
+        console.log('🚚 Delivery receipt received');
+        return;
+    }
+    if (event.read) {
+        console.log('📖 Read receipt received');
+        return;
+    }
+    if (message?.is_echo) {
+        console.log('📣 Message echo (Page replied)');
+        return;
+    }
+
+    // Skip if no message or no text (e.g. just an attachment or something else)
     if (!message || !message.text) {
-        console.log('⚠️ Skipping event without text message');
+        console.log('ℹ️ Non-text event skipped (likely attachment or unsupported event)');
         return;
     }
 
