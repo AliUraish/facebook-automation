@@ -100,6 +100,7 @@ Your goal: Collect customer information naturally through conversation.
 Required info to collect:
 - Name
 - Phone number
+- Email address
 - Their specific need/inquiry
 
 Guidelines:
@@ -107,7 +108,7 @@ Guidelines:
 - Ask ONE question at a time
 - Keep responses brief (2-3 sentences max)
 - If they ask about products, answer briefly then continue collecting info
-- Once you have all info, thank them and say support will contact them soon
+- Once you have all info (Name, Phone, Email, Inquiry), thank them and say support will contact them soon
 
 Current customer data: ${JSON.stringify(customerData)}
 
@@ -131,6 +132,7 @@ Return JSON with any found info:
 {
   "name": "customer name if mentioned",
   "phone": "phone number if mentioned",
+  "email": "email address if mentioned",
   "inquiry": "what they're asking about"
 }
 
@@ -141,10 +143,8 @@ Only include fields that are clearly present. Return empty object {} if nothing 
     if (!response) return {};
 
     try {
-        // Clean response - remove markdown code blocks if present
         let cleanResponse = response.trim();
         cleanResponse = cleanResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-
         return JSON.parse(cleanResponse);
     } catch (error) {
         console.error('Error parsing customer info:', error);
@@ -152,9 +152,41 @@ Only include fields that are clearly present. Return empty object {} if nothing 
     }
 };
 
+/**
+ * Classify and tag a customer query
+ */
+const classifyQuery = async (messageText) => {
+    const prompt = `Analyze this customer message for Desert Sound (Home Theater/Automation company).
+    
+    1. Determine if it is SPAM or GENUINE.
+    2. Assign a category (e.g., Installation, Product Inquiry, Repair, Pricing, Spam, General).
+    
+    Message: "${messageText}"
+    
+    Return ONLY valid JSON:
+    {
+      "is_spam": boolean,
+      "category": "string",
+      "confidence": 0.0-1.0,
+      "reason": "string"
+    }`;
+
+    const response = await generateContent(prompt);
+    if (!response) return { is_spam: false, category: 'General', confidence: 0.5 };
+
+    try {
+        let cleanResponse = response.trim();
+        cleanResponse = cleanResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        return JSON.parse(cleanResponse);
+    } catch (error) {
+        return { is_spam: false, category: 'General', confidence: 0.5 };
+    }
+};
+
 module.exports = {
     generateContent,
     classifySpam,
+    classifyQuery,
     generateOnboardingResponse,
     extractCustomerInfo,
 };
