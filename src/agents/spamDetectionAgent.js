@@ -74,11 +74,13 @@ const classifyMessageFallback = (text) => {
     };
 };
 
+const facebookService = require('../services/facebookService');
+
 /**
  * Process message from existing customer
  * - Classifies message as spam or genuine using AI
- * - If genuine: forwards to WhatsApp support
- * - If spam: logs to database
+ * - If genuine: forwards to WhatsApp support and confirms to customer
+ * - If spam: logs to database and notifies support if repeated
  */
 const processMessage = async (data) => {
     const { customer, psid, pageId, messageText, messageId, timestamp } = data;
@@ -98,7 +100,34 @@ const processMessage = async (data) => {
                 confidence: classification.confidence,
             });
 
-            console.log('🚫 Spam message logged, not forwarding to support');
+            console.log('🚫 Spam message logged');
+
+            // Check if they are spamming "one kind of message"
+            const recentSpam = await supabaseService.getRecentSpamLogs(psid, 3);
+            const isRepeating = recentSpam.length >= 2 &&
+                recentSpam.every(log => log.message.trim().toLowerCase() === messageText.trim().toLowerCase());
+
+            if (isRepeating) {
+                console.log('⚠️ Repeated spam detected, notifying support...');
+                await whatsappService.sendToSupport(
+                    `🚨 *SPAM ALERT*\n\n` +
+                    `The following person is spamming the same message:\n` +
+                    `Name: ${customer.name || 'Unknown'}\n` +
+                    `Phone: ${customer.phone || 'Unknown'}\n` +
+                    `PSID: ${psid}\n\n` +
+                    `Message: "${messageText}"\n\n` +
+                    `Reason: ${classification.reason}`
+                );
+            } else {
+                // Also forward initial spam for awareness as requested
+                await whatsappService.sendToSupport(
+                    `🚫 *SPAM FILTERED*\n\n` +
+                    `User: ${customer.name || 'Unknown'}\n` +
+                    `Message: "${messageText}"\n` +
+                    `Reason: ${classification.reason}\n\n` +
+                    `Note: This was NOT forwarded as a genuine query.`
+                );
+            }
 
             return {
                 success: true,
@@ -115,6 +144,10 @@ const processMessage = async (data) => {
 
             await whatsappService.sendToSupport(formattedMessage);
             console.log('📱 Genuine message forwarded to support');
+
+            // NEW: Acknowledge the customer
+            await facebookService.sendMessage(psid, "Sure, I will update the team about this.");
+            console.log('💬 Acknowledgment sent to customer');
 
             return {
                 success: true,
