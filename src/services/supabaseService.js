@@ -239,6 +239,31 @@ const resumeCustomer = async (psid) => {
     return await updateCustomer(psid, { is_paused: false });
 };
 
+/**
+ * Get brands by category
+ */
+const getBrandsByCategory = async (category) => {
+    const client = getSupabase();
+    if (!client) return [];
+
+    try {
+        const { data, error } = await client
+            .from('brands')
+            .select('name')
+            .ilike('category', `%${category}%`);
+
+        if (error) {
+            console.error('Error fetching brands:', error);
+            return [];
+        }
+
+        return data.map(b => b.name);
+    } catch (error) {
+        console.error('Error in getBrandsByCategory:', error);
+        return [];
+    }
+};
+
 module.exports = {
     getCustomerByPSID,
     createCustomer,
@@ -248,4 +273,5 @@ module.exports = {
     logQuery,
     pauseCustomer,
     resumeCustomer,
+    getBrandsByCategory,
 };
