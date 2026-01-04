@@ -69,6 +69,9 @@ const handleMessage = async (req, res) => {
     }
 };
 
+const geminiService = require('../services/geminiService');
+const whatsappService = require('../services/whatsappService');
+
 /**
  * Process individual messaging events
  */
@@ -86,8 +89,15 @@ const processMessagingEvent = async (event, pageId, timestamp) => {
         console.log('📖 Read receipt received');
         return;
     }
+
+    // Handle Human Intervention (Echoes)
     if (message?.is_echo) {
         console.log('📣 Message echo (Page replied)');
+        // If a human replier on the page sent this, the recipientId is the customer's PSID
+        if (recipientId) {
+            console.log(`👤 Human reply detected for ${recipientId}, pausing AI...`);
+            await supabaseService.pauseCustomer(recipientId);
+        }
         return;
     }
 
@@ -107,8 +117,47 @@ const processMessagingEvent = async (event, pageId, timestamp) => {
     console.log(`   Time: ${new Date(timestamp).toISOString()}`);
 
     try {
-        // Check if customer exists in database
-        const customer = await supabaseService.getCustomerByPSID(senderId);
+        // 1. Get customer from database
+        let customer = await supabaseService.getCustomerByPSID(senderId);
+
+        // 2. Classify and log the query (regardless of pause state)
+        console.log('🏷️ Classifying query...');
+        const classification = await geminiService.classifyQuery(messageText);
+
+        await supabaseService.logQuery({
+            psid: senderId,
+            messageText,
+            category: classification.category,
+            isSpam: classification.is_spam
+        });
+
+        // 3. Check for Human Intervention Pause
+        if (customer && customer.is_paused) {
+            // Determine if this was initiated by support (no first_message)
+            const isSupportInitiated = !customer.first_message;
+
+            // Check if we should auto-resume (1.5 hours) ONLY for customer-initiated chats
+            // Support-initiated chats stay paused "until changed" (manually)
+            const lastHumanReply = new Date(customer.last_human_reply_at).getTime();
+            const hoursSinceHumanReply = (Date.now() - lastHumanReply) / (1000 * 60 * 60);
+
+            if (isSupportInitiated || hoursSinceHumanReply < 1.5) {
+                console.log(`⏸️ AI is PAUSED for this customer (${isSupportInitiated ? 'Permanent' : '1.5h limit'}). Logging query and skipping AI response.`);
+
+                // Still notify support about the new message and its category
+                await whatsappService.sendToSupport(
+                    `💬 *NEW MESSAGE (AI PAUSED)*\n\n` +
+                    `User: ${customer.name || 'Unknown'}\n` +
+                    `Category: ${classification.category}\n` +
+                    `Message: "${messageText}"\n\n` +
+                    `Note: A human is currently handling this chat.`
+                );
+                return;
+            } else {
+                console.log('🔄 Auto-resuming AI after 1.5 hours of silence...');
+                customer = await supabaseService.resumeCustomer(senderId);
+            }
+        }
 
         if (!customer) {
             // New customer - trigger onboarding
@@ -129,8 +178,8 @@ const processMessagingEvent = async (event, pageId, timestamp) => {
                 console.log('👤 Continuing onboarding conversation...');
                 await onboardingAgent.handleOnboardingResponse(senderId, messageText);
             } else {
-                // Onboarding complete - check for spam
-                console.log('👤 Existing customer found, checking message...');
+                // Onboarding complete - process message (spam detection + escalation)
+                console.log('👤 Existing customer found, processing message...');
                 await spamDetectionAgent.processMessage({
                     customer,
                     psid: senderId,
