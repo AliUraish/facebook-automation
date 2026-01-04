@@ -142,16 +142,53 @@ const processMessage = async (data) => {
                 false
             );
 
-            await whatsappService.sendToSupport(formattedMessage);
-            console.log('📱 Genuine message forwarded to support');
+            // 🏷️ 1. Check if asking about brands
+            console.log('🏷️ Checking for brand inquiry...');
+            const brandInquiry = await geminiService.identifyBrandRequest(messageText);
 
-            // NEW: Acknowledge the customer
-            await facebookService.sendMessage(psid, "Sure, I will update the team about this.");
-            console.log('💬 Acknowledgment sent to customer');
+            let brandsData = null;
+            if (brandInquiry.is_asking_about_brands && brandInquiry.categories.length > 0) {
+                console.log(`🔍 Fetching brands for categories: ${brandInquiry.categories.join(', ')}`);
+                brandsData = {};
+                for (const cat of brandInquiry.categories) {
+                    const brands = await supabaseService.getBrandsByCategory(cat);
+                    if (brands.length > 0) {
+                        brandsData[cat] = brands;
+                    }
+                }
+            }
+
+            // 🤖 2. Generate AI response (Brand-aware & Policy-aware)
+            const aiAnswer = await geminiService.generateQueryResponse(
+                messageText,
+                customer.name,
+                brandsData,
+                brandInquiry.is_asking_about_brands
+            );
+
+            await facebookService.sendMessage(psid, aiAnswer || "Sure, I will update the team about this.");
+            console.log('💬 AI response sent to customer');
+
+            // 📱 3. Forward to support for actionable requests
+            // We'll forward it if it's NOT a general info query and NOT a brand/product query AI handled
+            // EXCEPT if it's explicitly a Human Assistance Request or Gemini flagged escalation
+            const classificationResult = await geminiService.classifyQuery(messageText);
+
+            const isInfoQuery = classificationResult.category === 'General' || classificationResult.category === 'Information';
+            const isSpeakerSizeQuery = messageText.toLowerCase().includes('small') || messageText.toLowerCase().includes('portable');
+            const isBrandInquiryAIHandled = brandInquiry.is_asking_about_brands;
+            const isEscalationRequested = classificationResult.category === 'Human Assistance Request' || classificationResult.escalation_needed;
+
+            if (isEscalationRequested || (!isInfoQuery && !isSpeakerSizeQuery && !isBrandInquiryAIHandled)) {
+                await whatsappService.sendToSupport(formattedMessage);
+                console.log('📱 Genuine message forwarded to support');
+            } else {
+                console.log('ℹ️ Query handled by AI (Policy/Brand/Info), skipping support forwarding as requested');
+            }
 
             return {
                 success: true,
-                action: 'forwarded_to_support',
+                action: 'answered_by_ai',
                 classification,
             };
         }
