@@ -61,6 +61,8 @@ const createCustomer = async (customerData) => {
                 email: customerData.email || null,
                 page_id: customerData.pageId || null,
                 first_message: customerData.firstMessage || null,
+                is_paused: customerData.is_paused || false,
+                last_human_reply_at: customerData.last_human_reply_at || null,
                 created_at: new Date().toISOString(),
             }])
             .select()
@@ -149,9 +151,101 @@ const logSpam = async (spamData) => {
     }
 };
 
+/**
+ * Get recent spam logs for a PSID
+ */
+const getRecentSpamLogs = async (psid, limit = 5) => {
+    const client = getSupabase();
+    if (!client) return [];
+
+    try {
+        const { data, error } = await client
+            .from('spam_logs')
+            .select('*')
+            .eq('psid', psid)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.error('Error fetching spam logs:', error);
+            return [];
+        }
+
+        return data || [];
+    } catch (error) {
+        console.error('Error in getRecentSpamLogs:', error);
+        return [];
+    }
+};
+
+/**
+ * Log a customer query
+ */
+const logQuery = async (queryData) => {
+    const client = getSupabase();
+    if (!client) return null;
+
+    try {
+        const { data, error } = await client
+            .from('queries')
+            .insert([{
+                psid: queryData.psid,
+                query_text: queryData.messageText,
+                category: queryData.category || 'General',
+                is_spam: queryData.isSpam || false,
+                created_at: new Date().toISOString(),
+            }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error logging query:', error);
+            return null;
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Error in logQuery:', error);
+        return null;
+    }
+};
+
+/**
+ * Pause AI for a customer (when human intervenes)
+ */
+const pauseCustomer = async (psid) => {
+    const customer = await getCustomerByPSID(psid);
+
+    if (!customer) {
+        // Support messaged someone first - create record and pause
+        console.log(`👤 Creating and pausing record for new customer ${psid} (Support initiated)`);
+        return await createCustomer({
+            psid,
+            is_paused: true,
+            last_human_reply_at: new Date().toISOString()
+        });
+    }
+
+    return await updateCustomer(psid, {
+        is_paused: true,
+        last_human_reply_at: new Date().toISOString()
+    });
+};
+
+/**
+ * Resume AI for a customer
+ */
+const resumeCustomer = async (psid) => {
+    return await updateCustomer(psid, { is_paused: false });
+};
+
 module.exports = {
     getCustomerByPSID,
     createCustomer,
     updateCustomer,
     logSpam,
+    getRecentSpamLogs,
+    logQuery,
+    pauseCustomer,
+    resumeCustomer,
 };
