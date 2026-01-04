@@ -119,10 +119,15 @@ const handleOnboardingResponse = async (psid, responseText) => {
             console.log('📤 AI response sent');
 
             // Check if we have all required info
-            if (customer && customer.name && customer.phone) {
+            if (customer && customer.name && customer.phone && customer.email) {
                 console.log('✅ All customer info collected, notifying support');
 
-                const completeAlert = `✅ COMPLETE CUSTOMER INFO\n\nName: ${customer.name}\nPhone: ${customer.phone}\nInquiry: ${customer.inquiry || customer.first_message}\n\nPSID: ${psid}`;
+                const completeAlert = `✅ COMPLETE CUSTOMER INFO\n\n` +
+                    `Name: ${customer.name}\n` +
+                    `Phone: ${customer.phone}\n` +
+                    `Email: ${customer.email}\n` +
+                    `Inquiry: ${customer.inquiry || customer.first_message}\n\n` +
+                    `PSID: ${psid}`;
 
                 await whatsappService.sendToSupport(completeAlert);
 
