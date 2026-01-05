@@ -9,6 +9,7 @@ const config = {
 
   // Facebook Page
   fbPageAccessToken: process.env.FB_PAGE_ACCESS_TOKEN,
+  fbAppSecret: process.env.FB_APP_SECRET,
 
   // Supabase
   supabaseUrl: process.env.SUPABASE_URL,
